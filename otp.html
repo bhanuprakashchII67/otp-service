@@ -162,7 +162,7 @@ function verifyOtp(){
     $("status").className="status err";
     return;
   }
-  request({action:"verify",purpose:d.purpose,otp});
+  request({action:"verify",purpose:d.purpose,email:d.email,phone:d.phone,otp});
 }
 
 ["email","phone","purpose"].forEach(id=>$(id).addEventListener("input",scheduleAutoSend));
