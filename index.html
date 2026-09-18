@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OTP Service</title>
+<style>body{font-family:system-ui,sans-serif;max-width:720px;margin:60px auto;padding:20px}input,button{padding:12px;margin:6px 0;width:100%;box-sizing:border-box}button{cursor:pointer}.card{border:1px solid #ddd;border-radius:12px;padding:24px}pre{white-space:pre-wrap}</style></head>
+<body><div class="card"><h1>OTP Service</h1><p>Supabase OTP test console.</p>
+<label>Supabase URL<input id="url" placeholder="https://YOUR_PROJECT.supabase.co"></label>
+<label>Access Token<input id="token" type="password" placeholder="Supabase Auth access token"></label>
+<label>Purpose<input id="purpose" value="change_password"></label>
+<label>Phone<input id="phone" placeholder="+919876543210"></label>
+<label>Email<input id="email" placeholder="user@example.com"></label>
+<button onclick="sendOtp()">Send OTP</button><label>OTP<input id="otp" inputmode="numeric" maxlength="6" placeholder="123456"></label><button onclick="verifyOtp()">Verify OTP</button><pre id="out"></pre></div>
+<script>
+async function call(body){const url=document.getElementById('url').value.replace(/\/$/,'');const token=document.getElementById('token').value;const r=await fetch(url+'/functions/v1/otp',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify(body)});const data=await r.json();document.getElementById('out').textContent=JSON.stringify(data,null,2)}
+function sendOtp(){call({action:'send',purpose:purpose.value,phone:phone.value,email:email.value})} function verifyOtp(){call({action:'verify',purpose:purpose.value,otp:otp.value})}
+</script></body></html>
