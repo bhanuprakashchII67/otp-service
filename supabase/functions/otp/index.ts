@@ -137,11 +137,10 @@ Deno.serve(async (request) => {
       if (!purpose) return json({ error: "purpose is required" }, 400);
 
       if (action === "send") {
-        const phone = typeof body.phone === "string" ? body.phone.trim() : "";
-        const email = typeof body.email === "string" ? body.email.trim() : "";
-
+        const phone = typeof user.phone === "string" ? user.phone.trim() : "";
+        const email = typeof user.email === "string" ? user.email.trim() : "";
         if (!phone && !email) {
-          return json({ error: "phone or email is required" }, 400);
+          return json({ error: "No email or phone is registered for this account" }, 400);
         }
 
         const { data: latest, error: latestError } = await admin
