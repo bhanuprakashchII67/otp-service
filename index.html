@@ -16,18 +16,20 @@
 <div class="hero"><div class="eyebrow">Password & sensitive actions</div><h1>Verify your identity</h1><p>Generate a fresh OTP and deliver it to the authenticated user's registered email and WhatsApp number.</p></div>
 <div class="body">
 <div class="grid">
-<div class="field full"><label>Email ID</label><input id="email" type="email" placeholder="user@example.com"></div>
+<div class="field"><label>Email ID</label><input id="email" type="email" placeholder="user@example.com"></div>
+<div class="field"><label>WhatsApp Phone Number</label><input id="phone" type="tel" placeholder="+91 98765 43210"></div>
 <div class="field full"><label>Purpose</label><input id="purpose" value="change_password"></div>
 <div class="field full"><label>OTP</label><input id="otp" inputmode="numeric" maxlength="6" placeholder="Enter 6-digit code"></div>
 </div>
+<div class="field full"><label>Supabase Auth Access Token <span style="font-weight:500;color:#64748b">(test console only)</span></label><input id="token" type="password" placeholder="Paste the logged-in user's access token"></div>
 <div class="actions"><button class="primary" onclick="sendOtp()">Generate & Send OTP</button><button class="secondary" onclick="verifyOtp()">Verify OTP</button></div>
-<div id="status" class="status">Enter the user's email and access token. The backend generates the OTP automatically.</div>
-<div class="note">For production, the email and WhatsApp number should come from the authenticated user's account. No OTP is generated in the browser.</div>
+<div id="status" class="status">Enter the registered Email ID, WhatsApp number, and test access token.</div>
+<div class="note">A new OTP is generated on every successful send request. In your real app, the existing Supabase login session supplies the access token automatically — users will not see this test field.</div>
 </div></section></main>
 <script>
 const PROJECT_URL="https://rwfamxkfqslorxcryjrp.supabase.co";
 const $=id=>document.getElementById(id);
-async function call(body){try{const token=prompt("Enter the user's Supabase Auth access token:");if(!token)throw new Error("Access token is required.");const r=await fetch(PROJECT_URL+"/functions/v1/otp",{method:"POST",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify(body)});const data=await r.json().catch(()=>({error:"Invalid server response"}));$("status").textContent=data.message||data.error||(data.verified?"OTP verified successfully.":"OTP verification failed.");$("status").className="status "+((data.ok||data.verified)?"ok":"err");}catch(e){$("status").textContent=e.message;$("status").className="status err"}}
-function sendOtp(){call({action:"send",purpose:$("purpose").value.trim()})}
+async function call(body){try{const token=$("token").value.trim();if(!token)throw new Error("Enter the Supabase Auth access token.");const r=await fetch(PROJECT_URL+"/functions/v1/otp",{method:"POST",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify(body)});const data=await r.json().catch(()=>({error:"Invalid server response"}));$("status").textContent=data.message||data.error||(data.verified?"OTP verified successfully.":"OTP verification failed.");$("status").className="status "+((data.ok||data.verified)?"ok":"err");}catch(e){$("status").textContent=e.message;$("status").className="status err"}}
+function sendOtp(){call({action:"send",purpose:$("purpose").value.trim(),email:$("email").value.trim(),phone:$("phone").value.trim()})}
 function verifyOtp(){call({action:"verify",purpose:$("purpose").value.trim(),otp:$("otp").value.trim()})}
 </script></body></html>
