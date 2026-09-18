@@ -76,6 +76,19 @@ button:disabled{opacity:.55;cursor:not-allowed}
 const API="https://rwfamxkfqslorxcryjrp.supabase.co/functions/v1/otp";
 const $=id=>document.getElementById(id);
 let timer=null,lastKey="",busy=false;
+
+async function checkBackend(){
+  try{
+    const r=await fetch(API,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"health"})});
+    const d=await r.json();
+    if(!r.ok||!d.ok){$("status").textContent="OTP backend health check failed."; $("status").className="status err"; return false;}
+    if(!d.hmacConfigured){$("status").textContent="OTP backend is missing its HMAC secret."; $("status").className="status err"; return false;}
+    if(!d.emailProviderConfigured){$("status").textContent="Email provider is not configured in Supabase."; $("status").className="status err"; return false;}
+    if(!d.whatsappProviderConfigured){$("status").textContent="WhatsApp provider is not configured in Supabase."; $("status").className="status err"; return false;}
+    if(!d.databaseOk){$("status").textContent="OTP database check failed."; $("status").className="status err"; return false;}
+    return true;
+  }catch(e){$("status").textContent="Unable to contact the OTP backend."; $("status").className="status err"; return false;}
+}
 function details(){return {email:$("email").value.trim(),phone:$("phone").value.trim(),purpose:$("purpose").value};}
 function validDetails(d){return /^\S+@\S+\.\S+$/.test(d.email)&&/^\+?[1-9]\d{7,14}$/.test(d.phone.replace(/[\s()-]/g,""))&&d.purpose;}
 function scheduleAutoSend(){clearTimeout(timer);timer=setTimeout(maybeAutoSend,700);}
