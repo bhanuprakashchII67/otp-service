@@ -1,4 +1,9 @@
-import { withSupabase } from "npm:@supabase/server@0.10.0";
+import { createClient } from "npm:@supabase/supabase-js@2";
+
+const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+const publishableKey = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? (() => { const keys = Deno.env.get("SUPABASE_PUBLISHABLE_KEYS"); if (!keys) return ""; try { return JSON.parse(keys).default ?? ""; } catch { return ""; } })();
+const secretKey = Deno.env.get("SUPABASE_SECRET_KEY") ?? (() => { const keys = Deno.env.get("SUPABASE_SECRET_KEYS"); if (!keys) return ""; try { return JSON.parse(keys).default ?? ""; } catch { return ""; } })();
+const admin = createClient(supabaseUrl, secretKey);
 
 const OTP_TTL_MS = 5 * 60 * 1000;
 const MAX_ATTEMPTS = 5;
@@ -106,14 +111,24 @@ async function sendEmail(email: string, otp: string, purpose: string) {
   }
 }
 
-export default {
-  fetch: withSupabase({ auth: "user" }, async (request, ctx) => {
+async function authenticateUser(request: Request) {
+  if (!supabaseUrl || !publishableKey) throw new Error("Supabase publishable key is not configured");
+  const authorization = request.headers.get("Authorization");
+  if (!authorization?.startsWith("Bearer ")) return null;
+  const userClient = createClient(supabaseUrl, publishableKey, { global: { headers: { Authorization: authorization } } });
+  const { data, error } = await userClient.auth.getUser();
+  if (error || !data.user) return null;
+  return data.user;
+}
+
+Deno.serve(async (request) => {
     if (request.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
     if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
     try {
-      const userId = ctx.userClaims?.sub;
-      if (!userId) return json({ error: "Unauthorized" }, 401);
+      const user = await authenticateUser(request);
+      if (!user) return json({ error: "Unauthorized" }, 401);
+      const userId = user.id;
 
       const body = await request.json();
       const action = body?.action;
@@ -129,7 +144,7 @@ export default {
           return json({ error: "phone or email is required" }, 400);
         }
 
-        const { data: latest, error: latestError } = await ctx.supabaseAdmin
+        const { data: latest, error: latestError } = await admin
           .from("otp_challenges")
           .select("created_at")
           .eq("user_id", userId)
@@ -155,7 +170,7 @@ export default {
         const otpHash = await hmac(`${userId}:${purpose}:${otp}`);
         const destinationHash = await sha256(primaryDestination);
 
-        const { data: challenge, error: insertError } = await ctx.supabaseAdmin
+        const { data: challenge, error: insertError } = await admin
           .from("otp_challenges")
           .insert({
             user_id: userId,
@@ -176,7 +191,7 @@ export default {
           if (phone) await sendWhatsApp(phone, otp, purpose);
           if (email) await sendEmail(email, otp, purpose);
         } catch (deliveryError) {
-          await ctx.supabaseAdmin
+          await admin
             .from("otp_challenges")
             .update({ used_at: new Date().toISOString() })
             .eq("id", challenge.id);
@@ -190,7 +205,7 @@ export default {
         const otp = String(body?.otp ?? "");
         if (!/^\d{6}$/.test(otp)) return json({ verified: false }, 400);
 
-        const { data: challenge, error: challengeError } = await ctx.supabaseAdmin
+        const { data: challenge, error: challengeError } = await admin
           .from("otp_challenges")
           .select("*")
           .eq("user_id", userId)
@@ -210,7 +225,7 @@ export default {
         const nextAttempts = challenge.attempts + 1;
 
         if (candidateHash !== challenge.otp_hash) {
-          await ctx.supabaseAdmin
+          await admin
             .from("otp_challenges")
             .update({ attempts: nextAttempts })
             .eq("id", challenge.id);
@@ -218,7 +233,7 @@ export default {
           return json({ verified: false });
         }
 
-        const { error: updateError } = await ctx.supabaseAdmin
+        const { error: updateError } = await admin
           .from("otp_challenges")
           .update({
             used_at: new Date().toISOString(),
@@ -237,5 +252,4 @@ export default {
       console.error(error);
       return json({ error: "Internal server error" }, 500);
     }
-  }),
-};
+});
