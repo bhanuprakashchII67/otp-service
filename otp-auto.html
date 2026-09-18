@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Automatic OTP Verification</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;background:linear-gradient(135deg,#f4f7ff,#eef1fb);color:#101828;display:grid;place-items:center;padding:24px}
+.shell{width:min(900px,100%)}
+.top{display:flex;align-items:center;gap:12px;margin:0 0 18px}
+.mark{width:44px;height:44px;border-radius:14px;background:#111827;color:#fff;display:grid;place-items:center;font-weight:900}
+.top b{font-size:18px}.top small{display:block;color:#667085;margin-top:2px}
+.card{background:#fff;border:1px solid #e4e7ec;border-radius:24px;box-shadow:0 24px 60px #10182812;overflow:hidden}
+.head{padding:32px;border-bottom:1px solid #eaecf0}
+.tag{color:#635bff;font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
+.head h1{font-size:32px;margin:8px 0}.head p{margin:0;color:#667085;line-height:1.55}
+.body{padding:32px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.full{grid-column:1/-1}
+.field{display:grid;gap:8px}label{font-size:13px;font-weight:750}
+input,select{width:100%;padding:14px;border:1px solid #d0d5dd;border-radius:12px;background:#fff;font-size:15px;outline:0}
+input:focus,select:focus{border-color:#635bff;box-shadow:0 0 0 4px #635bff18}
+.otp{letter-spacing:.3em;font-size:20px}
+.actions{display:flex;gap:12px;margin-top:22px}
+button{flex:1;padding:14px;border:0;border-radius:12px;font-weight:800;font-size:14px;cursor:pointer}
+.send{background:#111827;color:white}.verify{background:#eef2ff;color:#4338ca}
+button:disabled{opacity:.55;cursor:not-allowed}
+.status{margin-top:18px;padding:14px;border-radius:12px;background:#f2f4f7;color:#475467;min-height:48px}
+.status.ok{background:#ecfdf3;color:#027a48}.status.err{background:#fef3f2;color:#b42318}
+.auto{margin-top:12px;font-size:12px;color:#667085}
+.foot{margin-top:14px;font-size:12px;color:#98a2b3}
+@media(max-width:650px){.grid{grid-template-columns:1fr}.full{grid-column:auto}.body,.head{padding:24px}.actions{flex-direction:column}}
+</style>
+</head>
+<body>
+<main class="shell">
+<div class="top"><div class="mark">✓</div><div><b>OTP Verification</b><small>Secure account protection</small></div></div>
+<section class="card">
+<header class="head">
+<div class="tag">Password &amp; sensitive actions</div>
+<h1>Verify your identity</h1>
+<p>Enter the details. When the details change, a fresh OTP is generated automatically and sent to the email and WhatsApp destinations.</p>
+</header>
+<div class="body">
+<div class="grid">
+<div class="field">
+<label for="email">Email ID</label>
+<input id="email" type="email" placeholder="you@example.com" autocomplete="email">
+</div>
+<div class="field">
+<label for="phone">WhatsApp Phone Number</label>
+<input id="phone" type="tel" placeholder="+91 98765 43210" autocomplete="tel">
+</div>
+<div class="field full">
+<label for="purpose">Purpose</label>
+<select id="purpose">
+<option value="change_password">change_password</option>
+<option value="confirm_email">confirm_email</option>
+<option value="confirm_phone">confirm_phone</option>
+<option value="delete_account">delete_account</option>
+<option value="sensitive_action">sensitive_action</option>
+</select>
+</div>
+<div class="field full">
+<label for="otp">OTP</label>
+<input class="otp" id="otp" inputmode="numeric" maxlength="6" placeholder="Enter 6-digit code" autocomplete="one-time-code">
+</div>
+</div>
+<div class="actions"><button class="verify" onclick="verifyOtp()">Verify OTP</button></div>
+<div id="status" class="status">Enter Email ID and WhatsApp number. A new OTP will be generated automatically.</div>
+<div class="auto"><strong>Automatic OTP:</strong> once both contact fields are valid, the backend generates a new OTP automatically. No Generate button is required.</div>
+<div class="foot">No access token is required on this page. OTP generation and verification are handled by the backend.</div>
+</div>
+</section>
+</main>
+<script>
+const API="https://rwfamxkfqslorxcryjrp.supabase.co/functions/v1/otp";
+const $=id=>document.getElementById(id);
+let timer=null,lastKey="",busy=false;
+function details(){return {email:$("email").value.trim(),phone:$("phone").value.trim(),purpose:$("purpose").value};}
+function validDetails(d){return /^\S+@\S+\.\S+$/.test(d.email)&&/^\+?[1-9]\d{7,14}$/.test(d.phone.replace(/[\s()-]/g,""))&&d.purpose;}
+function scheduleAutoSend(){clearTimeout(timer);timer=setTimeout(maybeAutoSend,700);}
+async function maybeAutoSend(){
+ const d=details(); if(!validDetails(d)||busy)return;
+ const key=[d.email.toLowerCase(),d.phone.replace(/[\s()-]/g,""),d.purpose].join("|");
+ if(key===lastKey)return; lastKey=key; busy=true;
+ $("status").textContent="Generating your OTP automatically…"; $("status").className="status";
+ try{
+  const r=await fetch(API,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"send",...d})});
+  const data=await r.json();
+  if(r.ok&&data.ok){$("status").textContent=data.message||"New OTP sent to your email and WhatsApp.";$("status").className="status ok";$("otp").value="";}
+  else{$("status").textContent=data.error||"OTP could not be generated.";$("status").className="status err";if(r.status!==429)lastKey="";}
+ }catch(e){$("status").textContent="Unable to contact the OTP service.";$("status").className="status err";lastKey="";}
+ finally{busy=false;}
+}
+function verifyOtp(){
+ const d=details(),otp=$("otp").value.trim();
+ if(!validDetails(d)){$("status").textContent="Enter a valid Email ID and WhatsApp number.";$("status").className="status err";return;}
+ if(!/^\d{6}$/.test(otp)){$("status").textContent="Enter the 6-digit OTP.";$("status").className="status err";return;}
+ $("status").textContent="Verifying OTP…";$("status").className="status";
+ fetch(API,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"verify",...d,otp})})
+ .then(async r=>({ok:r.ok,data:await r.json()}))
+ .then(({ok,data})=>{$("status").textContent=data.message||data.error||(ok?"OTP verified successfully.":"Invalid OTP.");$("status").className="status "+(data.verified?"ok":"err");})
+ .catch(()=>{$("status").textContent="Unable to contact the OTP service.";$("status").className="status err";});
+}
+["email","phone"].forEach(id=>$(id).addEventListener("input",scheduleAutoSend));
+$("purpose").addEventListener("change",()=>{lastKey="";scheduleAutoSend();});
+</script>
+</body>
+</html>
