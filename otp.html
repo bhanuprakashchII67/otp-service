@@ -65,110 +65,45 @@ button:disabled{opacity:.55;cursor:not-allowed}
 <input class="otp" id="otp" inputmode="numeric" maxlength="6" placeholder="Enter 6-digit code" autocomplete="one-time-code">
 </div>
 </div>
-<div class="actions">
-<button id="send" class="send" onclick="sendOtp()">Generate &amp; Send OTP</button>
-<button class="verify" onclick="verifyOtp()">Verify OTP</button>
-</div>
+<div class="actions"><button class="verify" onclick="verifyOtp()">Verify OTP</button></div>
 <div id="status" class="status">Waiting for your authenticated app session.</div>
-<div class="auto">A fresh OTP is created whenever a new destination/purpose is accepted. Repeating the same details is rate-limited for 60 seconds.</div>
-<div class="foot">The access token is never shown here. Your real app should provide the signed-in Supabase session automatically.</div>
+<div class="auto">The website automatically generates a fresh OTP when you enter or change the Email ID, WhatsApp number, or purpose. No Generate button is required.</div>
+<div class="foot">No access token is required on this page. OTP generation and verification are handled by the backend.</div>
 </div>
 </section>
 </main>
 <script>
 const API="https://rwfamxkfqslorxcryjrp.supabase.co/functions/v1/otp";
 const $=id=>document.getElementById(id);
-let accessToken=window.__SUPABASE_ACCESS_TOKEN__||"";
-let timer=null,lastKey="";
-
-window.addEventListener("message",event=>{
-  if(event.data && event.data.type==="SUPABASE_SESSION" && typeof event.data.access_token==="string"){
-    accessToken=event.data.access_token;
-    $("status").textContent="Signed-in session connected. Enter or change the details to generate an OTP.";
-    $("status").className="status";
-    maybeAutoSend();
-  }
-});
-
-function details(){
-  return {
-    email:$("email").value.trim(),
-    phone:$("phone").value.trim(),
-    purpose:$("purpose").value
-  };
-}
-
-function validDetails(d){
-  return /^\S+@\S+\.\S+$/.test(d.email) && d.phone.length>=8 && d.purpose;
-}
-
-function scheduleAutoSend(){
-  clearTimeout(timer);
-  timer=setTimeout(maybeAutoSend,700);
-}
-
+let timer=null,lastKey="",busy=false;
+function details(){return {email:$("email").value.trim(),phone:$("phone").value.trim(),purpose:$("purpose").value};}
+function validDetails(d){return /^\S+@\S+\.\S+$/.test(d.email)&&/^\+?[1-9]\d{7,14}$/.test(d.phone.replace(/[\s()-]/g,""))&&d.purpose;}
+function scheduleAutoSend(){clearTimeout(timer);timer=setTimeout(maybeAutoSend,700);}
 async function maybeAutoSend(){
-  const d=details();
-  if(!accessToken || !validDetails(d)) return;
-  const key=[d.email.toLowerCase(),d.phone,d.purpose].join("|");
-  if(key===lastKey) return;
-  lastKey=key;
-  await request({action:"send",...d},true);
+ const d=details(); if(!validDetails(d)||busy)return;
+ const key=[d.email.toLowerCase(),d.phone.replace(/[\s()-]/g,""),d.purpose].join("|");
+ if(key===lastKey)return; lastKey=key; busy=true;
+ $("status").textContent="Generating your OTP automatically…"; $("status").className="status";
+ try{
+  const r=await fetch(API,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"send",...d})});
+  const data=await r.json();
+  if(r.ok&&data.ok){$("status").textContent=data.message||"New OTP sent to your email and WhatsApp.";$("status").className="status ok";$("otp").value="";}
+  else{$("status").textContent=data.error||"OTP could not be generated.";$("status").className="status err";if(r.status!==429)lastKey="";}
+ }catch(e){$("status").textContent="Unable to contact the OTP service.";$("status").className="status err";lastKey="";}
+ finally{busy=false;}
 }
-
-async function request(body,automatic=false){
-  if(!accessToken){
-    $("status").textContent="Connect this page to the signed-in app session first.";
-    $("status").className="status err";
-    return;
-  }
-  $("send").disabled=true;
-  $("status").textContent=automatic?"Generating a fresh OTP…":"Sending OTP…";
-  $("status").className="status";
-  try{
-    const r=await fetch(API,{method:"POST",headers:{Authorization:"Bearer "+accessToken,"Content-Type":"application/json"},body:JSON.stringify(body)});
-    const data=await r.json();
-    if(r.ok && data.ok){
-      $("status").textContent=data.message||"New OTP generated and sent to email + WhatsApp.";
-      $("status").className="status ok";
-      if(body.action==="send") $("otp").value="";
-    }else{
-      $("status").textContent=data.error||"OTP request failed.";
-      $("status").className="status err";
-      if(body.action==="send") lastKey="";
-    }
-  }catch(e){
-    $("status").textContent="Unable to contact OTP service.";
-    $("status").className="status err";
-    if(body.action==="send") lastKey="";
-  }finally{$("send").disabled=false}
-}
-
-function sendOtp(){
-  const d=details();
-  if(!validDetails(d)){
-    $("status").textContent="Enter a valid Email ID and WhatsApp number.";
-    $("status").className="status err";
-    return;
-  }
-  lastKey="";
-  maybeAutoSend();
-}
-
 function verifyOtp(){
-  const d=details(),otp=$("otp").value.trim();
-  if(!/^\d{6}$/.test(otp)){
-    $("status").textContent="Enter the 6-digit OTP.";
-    $("status").className="status err";
-    return;
-  }
-  request({action:"verify",purpose:d.purpose,email:d.email,phone:d.phone,otp});
+ const d=details(),otp=$("otp").value.trim();
+ if(!validDetails(d)){$("status").textContent="Enter a valid Email ID and WhatsApp number.";$("status").className="status err";return;}
+ if(!/^\d{6}$/.test(otp)){$("status").textContent="Enter the 6-digit OTP.";$("status").className="status err";return;}
+ $("status").textContent="Verifying OTP…";$("status").className="status";
+ fetch(API,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"verify",...d,otp})})
+ .then(async r=>({ok:r.ok,data:await r.json()}))
+ .then(({ok,data})=>{$("status").textContent=data.message||data.error||(ok?"OTP verified successfully.":"Invalid OTP.");$("status").className="status "+(data.verified?"ok":"err");})
+ .catch(()=>{$("status").textContent="Unable to contact the OTP service.";$("status").className="status err";});
 }
-
-["email","phone","purpose"].forEach(id=>$(id).addEventListener("input",scheduleAutoSend));
-["email","phone"].forEach(id=>$(id).addEventListener("change",scheduleAutoSend));
-$("purpose").addEventListener("change",scheduleAutoSend);
-setTimeout(maybeAutoSend,900);
+["email","phone"].forEach(id=>$(id).addEventListener("input",scheduleAutoSend));
+$("purpose").addEventListener("change",()=>{lastKey="";scheduleAutoSend();});
 </script>
 </body>
 </html>
